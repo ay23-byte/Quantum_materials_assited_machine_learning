@@ -1,0 +1,16 @@
+{
+    "model": "RandomForestRegressor",
+    "n_estimators": 200,
+    "min_samples_leaf": 1,
+    "max_depth": null,
+    "min_samples_split": 2,
+    "max_features": 1.0,
+    "grouping": "element_system",
+    "n_splits": 5,
+    "MAE_mean_eV": 0.3109265855946858,
+    "MAE_std_eV": 0.011338269181058454,
+    "RMSE_mean_eV": 0.6772707851748339,
+    "RMSE_std_eV": 0.03799636424952053,
+    "R2_mean": 0.7324466438016699,
+    "R2_std": 0.015594448934786932
+}

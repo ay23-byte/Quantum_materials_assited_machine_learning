@@ -1,0 +1,11 @@
+{
+    "model": "RandomForestRegressor",
+    "n_estimators": 200,
+    "max_depth": null,
+    "min_samples_split": 2,
+    "min_samples_leaf": 1,
+    "max_features": 1.0,
+    "test_MAE_eV": 0.23813477522829402,
+    "test_RMSE_eV": 0.5558891329685764,
+    "test_R2": 0.8195301012184077
+}

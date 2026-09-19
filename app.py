@@ -9,31 +9,37 @@ RESULTS = ROOT / "results"
 
 st.set_page_config(page_title="Quantum Materials ML", page_icon="🔬", layout="wide")
 
+
 @st.cache_data
-def load_candidates():
-    path = RESULTS / "uncertainty_aware_bandgap_candidates.csv"
+def load_predictions():
+    path = RESULTS / "all_material_predictions.csv"
     if not path.exists():
-        path = RESULTS / "bandgap_screening_candidates.csv"
+        return pd.DataFrame()
     return pd.read_csv(path)
+
 
 @st.cache_data
 def load_metrics():
     path = RESULTS / "final_model_metrics.json"
     return json.loads(path.read_text()) if path.exists() else {}
 
+
 @st.cache_data
 def load_group_metrics():
     path = RESULTS / "tuned_groupkfold_summary.json"
     return json.loads(path.read_text()) if path.exists() else {}
+
 
 st.title("Machine-Learning-Assisted Discovery of Quantum Materials")
 st.caption("JARVIS-DFT 3D • OptB88vdW band-gap prediction • Random Forest")
 
 metrics = load_metrics()
 group_metrics = load_group_metrics()
-candidates = load_candidates()
+predictions = load_predictions()
 
-tab1, tab2, tab3 = st.tabs(["Model performance", "Candidate screening", "About the project"])
+tab1, tab2, tab3 = st.tabs(
+    ["Model performance", "Candidate screening", "About the project"]
+)
 
 with tab1:
     st.subheader("Final model performance")
@@ -44,9 +50,21 @@ with tab1:
 
     st.markdown("### Materials-aware validation")
     g1, g2, g3 = st.columns(3)
-    g1.metric("GroupKFold MAE", f"{group_metrics.get('MAE_mean_eV', 0):.3f} ± {group_metrics.get('MAE_std_eV', 0):.3f} eV")
-    g2.metric("GroupKFold RMSE", f"{group_metrics.get('RMSE_mean_eV', 0):.3f} ± {group_metrics.get('RMSE_std_eV', 0):.3f} eV")
-    g3.metric("GroupKFold R²", f"{group_metrics.get('R2_mean', 0):.3f} ± {group_metrics.get('R2_std', 0):.3f}")
+    g1.metric(
+        "GroupKFold MAE",
+        f"{group_metrics.get('MAE_mean_eV', 0):.3f} ± "
+        f"{group_metrics.get('MAE_std_eV', 0):.3f} eV",
+    )
+    g2.metric(
+        "GroupKFold RMSE",
+        f"{group_metrics.get('RMSE_mean_eV', 0):.3f} ± "
+        f"{group_metrics.get('RMSE_std_eV', 0):.3f} eV",
+    )
+    g3.metric(
+        "GroupKFold R²",
+        f"{group_metrics.get('R2_mean', 0):.3f} ± "
+        f"{group_metrics.get('R2_std', 0):.3f}",
+    )
 
     st.info(
         "The random test split measures interpolation on a held-out subset. "
@@ -63,43 +81,111 @@ with tab1:
 
 with tab2:
     st.subheader("Target-band-gap candidate screening")
-    st.write(
-        "These are known JARVIS materials retrospectively prioritized around a "
-        "predicted band gap of 1.5 eV. This is a screening demonstration, not "
-        "a claim of experimentally discovered materials."
-    )
 
-    c1, c2, c3 = st.columns(3)
-    target = c1.number_input("Target band gap (eV)", 0.1, 5.0, 1.5, 0.1)
-    max_distance = c2.slider("Maximum predicted distance (eV)", 0.01, 1.0, 0.10, 0.01)
-    max_uncertainty = c3.slider("Maximum uncertainty proxy (eV)", 0.01, 1.0, 0.40, 0.01)
+    if predictions.empty:
+        st.error(
+            "The full screening file was not found. Expected: "
+            "results/all_material_predictions.csv"
+        )
+    else:
+        st.write(
+            "Search the complete JARVIS-DFT dataset using the selected target "
+            "band gap, prediction tolerance, and Random Forest uncertainty proxy. "
+            "These are known materials retrospectively prioritized by the model; "
+            "this is a screening demonstration, not a claim of experimental discovery."
+        )
 
-    df = candidates.copy()
-    df["distance_from_selected_target"] = (df["predicted_bandgap"] - target).abs()
-    filtered = df[
-        (df["distance_from_selected_target"] <= max_distance)
-        & (df["prediction_uncertainty"] <= max_uncertainty)
-    ].sort_values(["distance_from_selected_target", "prediction_uncertainty"])
+        c1, c2, c3 = st.columns(3)
+        target = c1.number_input(
+            "Target band gap (eV)",
+            min_value=0.0,
+            max_value=10.0,
+            value=1.5,
+            step=0.1,
+        )
+        max_distance = c2.slider(
+            "Maximum predicted distance (eV)",
+            min_value=0.01,
+            max_value=2.0,
+            value=0.10,
+            step=0.01,
+        )
+        max_uncertainty = c3.slider(
+            "Maximum uncertainty proxy (eV)",
+            min_value=0.01,
+            max_value=2.0,
+            value=0.40,
+            step=0.01,
+        )
 
-    st.write(f"Showing **{len(filtered)}** candidates from the stored screening results.")
+        df = predictions.copy()
+        df["distance_from_selected_target"] = (
+            df["predicted_bandgap"] - target
+        ).abs()
 
-    display_cols = [
-        "jid", "formula", "predicted_bandgap", "prediction_uncertainty",
-        "target_bandgap", "prediction_error", "crys", "spg_number"
-    ]
-    available = [c for c in display_cols if c in filtered.columns]
-    st.dataframe(filtered[available].head(100), use_container_width=True, hide_index=True)
+        filtered = df[
+            (df["distance_from_selected_target"] <= max_distance)
+            & (df["prediction_uncertainty"] <= max_uncertainty)
+        ].sort_values(
+            ["distance_from_selected_target", "prediction_uncertainty"]
+        )
 
-    if not filtered.empty:
-        st.markdown("### Predicted band-gap distribution")
-        chart_df = filtered[["formula", "predicted_bandgap"]].head(30).set_index("formula")
-        st.bar_chart(chart_df)
+        st.success(
+            f"Found **{len(filtered):,}** matching materials out of "
+            f"**{len(df):,}** total materials."
+        )
 
-    st.caption(
-        "Uncertainty is the standard deviation of Random Forest tree predictions "
-        "and should be treated as a model-dispersion proxy, not a calibrated "
-        "prediction interval."
-    )
+        if not filtered.empty:
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Closest predicted band gap", f"{filtered.iloc[0]['predicted_bandgap']:.3f} eV")
+            m2.metric("Closest material", str(filtered.iloc[0]["formula"]))
+            m3.metric("Lowest uncertainty", f"{filtered['prediction_uncertainty'].min():.3f} eV")
+
+            display_cols = [
+                "jid",
+                "formula",
+                "predicted_bandgap",
+                "prediction_uncertainty",
+                "target_bandgap",
+                "crys",
+                "spg_number",
+            ]
+            available = [c for c in display_cols if c in filtered.columns]
+
+            st.markdown("### Matching materials")
+            st.dataframe(
+                filtered[available].head(100),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+            st.markdown("### Predicted band gaps of top matches")
+            chart_df = (
+                filtered[["formula", "predicted_bandgap"]]
+                .head(30)
+                .copy()
+            )
+            chart_df["formula"] = chart_df["formula"].astype(str)
+            chart_df = chart_df.set_index("formula")
+            st.bar_chart(chart_df)
+
+            st.download_button(
+                "Download filtered candidates as CSV",
+                data=filtered.to_csv(index=False).encode("utf-8"),
+                file_name="filtered_bandgap_candidates.csv",
+                mime="text/csv",
+            )
+        else:
+            st.warning(
+                "No materials match the current filters. Increase the maximum "
+                "distance or uncertainty, or choose another target band gap."
+            )
+
+        st.caption(
+            "Uncertainty is the standard deviation of Random Forest tree predictions "
+            "and should be treated as a model-dispersion proxy, not a calibrated "
+            "prediction interval."
+        )
 
 with tab3:
     st.subheader("Project overview")
@@ -121,14 +207,18 @@ with tab3:
         "The screening results are retrospective because the materials already exist "
         "in the database."
     )
+
     st.markdown("### Reproducibility")
     st.write(
         "The notebooks contain the data preparation, validation, tuning, screening, "
-        "and interpretation workflow."
+        "and interpretation workflow. The all-material screening predictions are "
+        "generated by src/generate_screening_predictions.py."
     )
 
 st.sidebar.header("Project")
 st.sidebar.write("Quantum Materials + Machine Learning")
 st.sidebar.write("JARVIS-DFT 3D")
 st.sidebar.write("Target: OptB88vdW band gap")
-st.sidebar.markdown("[GitHub repository](https://github.com/ay23-byte/Quantum_materials_assited_machine_learning)")
+st.sidebar.markdown(
+    "[GitHub repository](https://github.com/ay23-byte/Quantum_materials_assited_machine_learning)"
+)

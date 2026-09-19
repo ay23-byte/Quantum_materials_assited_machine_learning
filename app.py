@@ -137,9 +137,15 @@ with tab2:
 
         if not filtered.empty:
             m1, m2, m3 = st.columns(3)
-            m1.metric("Closest predicted band gap", f"{filtered.iloc[0]['predicted_bandgap']:.3f} eV")
+            m1.metric(
+                "Closest predicted band gap",
+                f"{filtered.iloc[0]['predicted_bandgap']:.3f} eV",
+            )
             m2.metric("Closest material", str(filtered.iloc[0]["formula"]))
-            m3.metric("Lowest uncertainty", f"{filtered['prediction_uncertainty'].min():.3f} eV")
+            m3.metric(
+                "Lowest uncertainty",
+                f"{filtered['prediction_uncertainty'].min():.3f} eV",
+            )
 
             display_cols = [
                 "jid",
@@ -155,7 +161,7 @@ with tab2:
             st.markdown("### Matching materials")
             st.dataframe(
                 filtered[available].head(100),
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
             )
 
@@ -167,13 +173,14 @@ with tab2:
             )
             chart_df["formula"] = chart_df["formula"].astype(str)
             chart_df = chart_df.set_index("formula")
-            st.bar_chart(chart_df)
+            st.bar_chart(chart_df, width="stretch")
 
             st.download_button(
                 "Download filtered candidates as CSV",
                 data=filtered.to_csv(index=False).encode("utf-8"),
                 file_name="filtered_bandgap_candidates.csv",
                 mime="text/csv",
+                width="stretch",
             )
         else:
             st.warning(

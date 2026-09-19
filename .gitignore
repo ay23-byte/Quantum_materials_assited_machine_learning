@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+quantum-materials-ml/
+
+# Jupyter
+.ipynb_checkpoints/
+*.nbconvert.ipynb
+
+# IDEs
+.vscode/
+.idea/
+*.code-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local data / large generated files
+data/*.csv
+data/*.zip
+data/raw/
+data/cache/
+
+# Generated results
+results/*.csv
+results/*.json
+
+# Keep small metadata
+!results/README.md
+
+# Generated figures
+figures/*.png
+figures/*.jpg
+figures/*.jpeg
+figures/*.pdf
+
+# Secrets / environment files
+.env
+.env.*
+!.env.example

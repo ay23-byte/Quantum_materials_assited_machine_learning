@@ -37,8 +37,8 @@ metrics = load_metrics()
 group_metrics = load_group_metrics()
 predictions = load_predictions()
 
-tab1, tab2, tab3 = st.tabs(
-    ["Model performance", "Candidate screening", "Trustworthiness", "About the project"]
+tab1, tab2, tab3, tab4 = st.tabs(
+    ["Model performance", "Candidate screening", "Trustworthiness", "About"]
 )
 
 with tab1:

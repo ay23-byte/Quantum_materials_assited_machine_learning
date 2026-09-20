@@ -1,4 +1,5 @@
-# Research environment for notebooks
+# Streamlit application and research environment
+streamlit>=1.40
 numpy>=1.26
 pandas>=2.0
 scipy>=1.11

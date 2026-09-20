@@ -1,0 +1,119 @@
+{
+  "model": {
+    "name": "Random Forest Regressor",
+    "task": "OptB88vdW band-gap prediction",
+    "n_materials": 93902,
+    "n_features": 25
+  },
+  "test_performance": {
+    "mae_eV": 0.2381,
+    "rmse_eV": 0.5559,
+    "r2": 0.8195
+  },
+  "uncertainty_analysis": {
+    "method": "Random Forest tree prediction dispersion",
+    "note": "Uncertainty proxy, not a calibrated prediction interval",
+    "mean_absolute_error": 0.238135,
+    "mean_error_by_uncertainty_group": {
+      "low": 0.007484,
+      "medium": 0.17001,
+      "high": 0.767611
+    }
+  },
+  "conformal_prediction": {
+    "method": "Split conformal prediction",
+    "nominal_coverage": 0.9,
+    "observed_test_coverage": 0.8992,
+    "interval_half_width_eV": 0.7849,
+    "interval_width_eV": 1.5698
+  },
+  "applicability_domain": {
+    "method": "5-nearest-neighbor distance in standardized descriptor space",
+    "note": "Applicability-domain proxy, not a universal OOD detector",
+    "mae_by_distance_group": {
+      "low": 0.198895,
+      "medium_low": 0.186364,
+      "medium_high": 0.23796,
+      "high": 0.329328
+    }
+  },
+  "chemical_system_validation": {
+    "method": "GroupKFold by chemical system",
+    "mae_eV": 0.3109,
+    "mae_std_eV": 0.0113,
+    "rmse_eV": 0.6773,
+    "rmse_std_eV": 0.038,
+    "r2": 0.7324,
+    "r2_std": 0.0156,
+    "overlapping_groups": 0
+  },
+  "interpretability": {
+    "method": "Permutation importance",
+    "n_repeats": 5,
+    "top_features": [
+      {
+        "feature": "mean_ionization_energy",
+        "importance": 0.282553
+      },
+      {
+        "feature": "mean_d_valence",
+        "importance": 0.244844
+      },
+      {
+        "feature": "mean_p_valence",
+        "importance": 0.242303
+      },
+      {
+        "feature": "mean_group",
+        "importance": 0.114578
+      },
+      {
+        "feature": "max_electronegativity",
+        "importance": 0.110624
+      },
+      {
+        "feature": "total_atoms",
+        "importance": 0.094639
+      }
+    ],
+    "shap": {
+      "method": "TreeSHAP",
+      "sample_size": 200,
+      "top_features": [
+        {
+          "feature": "mean_ionization_energy",
+          "mean_abs_shap": 0.254998
+        },
+        {
+          "feature": "mean_d_valence",
+          "mean_abs_shap": 0.20318
+        },
+        {
+          "feature": "mean_p_valence",
+          "mean_abs_shap": 0.149164
+        },
+        {
+          "feature": "max_electronegativity",
+          "mean_abs_shap": 0.140682
+        },
+        {
+          "feature": "total_atoms",
+          "mean_abs_shap": 0.066127
+        },
+        {
+          "feature": "mean_group",
+          "mean_abs_shap": 0.059815
+        }
+      ]
+    },
+    "interpretation_note": "Feature importance indicates predictive usefulness within the model and should not be interpreted as causal evidence."
+  },
+  "overall_assessment": {
+    "random_split_performance": "strong predictive performance",
+    "chemical_system_generalization": "performance decreases when chemically related systems are held out",
+    "uncertainty": "higher uncertainty is associated with larger prediction errors",
+    "conformal_prediction": "empirical coverage is close to the nominal 90% target",
+    "applicability_domain": "larger descriptor-space distance is associated with higher error",
+    "interpretability": "permutation importance and SHAP identify consistent leading descriptors"
+  }
+}

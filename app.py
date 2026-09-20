@@ -38,7 +38,7 @@ group_metrics = load_group_metrics()
 predictions = load_predictions()
 
 tab1, tab2, tab3 = st.tabs(
-    ["Model performance", "Candidate screening", "About the project"]
+    ["Model performance", "Candidate screening", "Trustworthiness", "About the project"]
 )
 
 with tab1:
@@ -195,6 +195,46 @@ with tab2:
         )
 
 with tab3:
+    st.subheader("Trustworthiness and interpretation")
+    trust_path = RESULTS / "advanced_trustworthiness_summary.json"
+    perm_path = RESULTS / "advanced_permutation_importance.csv"
+    shap_path = RESULTS / "shap_feature_importance.csv"
+
+    if trust_path.exists():
+        trust = json.loads(trust_path.read_text())
+        t1, t2, t3 = st.columns(3)
+        t1.metric("Conformal nominal coverage", f"{(1-trust.get('conformal_alpha', 0.10))*100:.1f}%")
+        t2.metric("Observed test coverage", f"{trust.get('conformal_observed_test_coverage', 0)*100:.1f}%")
+        t3.metric("Interval half-width", f"{trust.get('conformal_interval_half_width_eV', 0):.3f} eV")
+        st.info("Conformal intervals are statistical calibration intervals under their assumptions; they are not physical uncertainty bars.")
+    else:
+        st.info("Run notebooks/06_Trustworthy_ML.ipynb to generate conformal-calibration and OOD analysis outputs. The current screening uncertainty remains the Random-Forest tree-dispersion proxy.")
+
+    if perm_path.exists():
+        st.markdown("### Permutation importance")
+        perm = pd.read_csv(perm_path).head(15).sort_values("importance_mae")
+        st.bar_chart(perm.set_index("feature")["importance_mae"], width="stretch")
+    else:
+        fig = ROOT / "figures" / "top_permutation_importance.svg"
+        if fig.exists():
+            st.image(str(fig), width="stretch")
+        else:
+            st.info("Permutation-importance results are not available yet.")
+
+    if shap_path.exists():
+        st.markdown("### SHAP feature importance")
+        shap_df = pd.read_csv(shap_path).head(20)
+        st.dataframe(shap_df, width="stretch", hide_index=True)
+    else:
+        st.info("SHAP results will appear here after the trustworthy-ML notebook is run.")
+
+    st.markdown("### Applicability-domain / OOD analysis")
+    if trust_path.exists():
+        st.write("The notebook also computes nearest-neighbor distance in standardized numerical descriptor space as an applicability-domain proxy. Larger distances indicate weaker support from nearby training examples.")
+    else:
+        st.write("The planned OOD analysis uses nearest-neighbor distance in standardized numerical descriptor space. This is an applicability-domain proxy, not a universal OOD detector.")
+
+with tab4:
     st.subheader("Project overview")
     st.write(
         "Research question: Can machine learning learn relationships between "

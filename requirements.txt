@@ -2,3 +2,4 @@ streamlit>=1.35,<2
 numpy>=1.26
 pandas>=2.0
 scikit-learn>=1.4
+shap>=0.45

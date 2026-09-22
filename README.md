@@ -592,6 +592,38 @@ Quantum-materials/
 ├── requirements.txt
 └── README.md
 
+Structure generation for hypothetical candidates
+
+The project now includes a prototype-transfer structure initialization stage:
+
+```
+src/generate_hypothetical_structures.py
+```
+
+It reads `results/hypothetical_shortlist.csv`, searches the JARVIS-DFT 3D reference structures for matching reduced stoichiometric prototypes, transfers the fractional coordinates to the hypothetical composition, and scales the lattice using composition-averaged atomic-radius information.
+
+Run:
+
+```
+python src/generate_hypothetical_structures.py --max-prototypes 3
+```
+
+Outputs are written under:
+
+```
+results/hypothetical_structures/
+```
+
+including POSCAR and CIF files for each generated initial structure and:
+
+```
+results/hypothetical_structures/structure_generation_manifest.csv
+results/hypothetical_structures/generation_summary.json
+```
+
+The generated structures are prototype-transferred initial geometries. They are not relaxed structures and do not establish thermodynamic stability, dynamical stability, synthesizability, or experimental novelty. The next stage is structure relaxation followed by formation-energy/stability and electronic-property validation.
+
+
 Author
 
 Ayush Kumar Prajapati

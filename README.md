@@ -462,6 +462,136 @@ Can the model prioritize materials for further study?
 
 This makes the project a computational investigation into machine-learning-assisted quantum-materials discovery, rather than a standalone machine-learning classification exercise.
 
+
+09 — Final research results
+
+notebooks/09_Final_Research_Results.ipynb
+
+Consolidates the final research evaluation of the composition-based and structure-aware models.
+
+The study reports both an untouched random test split and a stricter chemical-system GroupKFold evaluation. The structure-aware representation adds 10 crystal-structure descriptors to the 25 composition/periodic descriptors.
+
+The structure-aware model improves the chemical-system GroupKFold results from:
+
+MAE 0.3109 eV
+RMSE 0.6773 eV
+R² 0.7324
+
+to:
+
+MAE 0.3044 eV
+RMSE 0.6511 eV
+R² 0.7524
+
+The notebook also documents retrospective screening of known JARVIS materials around a target band gap. This is prioritization of known materials, not discovery of experimentally unknown materials.
+
+10 — Advanced model optimization
+
+notebooks/10_Advanced_Model_Optimization.ipynb
+
+Benchmarks additional model families using the 35-descriptor structure-aware representation, including Random Forest, Extra Trees, HistGradientBoosting, and a two-stage Extra Trees approach.
+
+The notebook is used as a model-family optimization experiment. Its random train/test comparison should be interpreted separately from the stricter chemical-system GroupKFold evaluation.
+
+New-materials extension
+
+The project now includes a composition-space exploration stage for generating hypothetical materials from known chemical elements:
+
+src/generate_hypothetical_candidates.py
+
+The workflow:
+
+1. Generate charge-balanced binary and ternary compositions.
+2. Generate additional charge-balanced quaternary compositions.
+3. Canonicalize formulas to compare compositions independently of element ordering.
+4. Remove compositions already represented in the JARVIS-DFT reference set.
+5. Calculate the same 25 composition/periodic descriptors used by the existing model.
+6. Mark crystal system and space-group information as unknown because hypothetical compositions do not have a known crystal structure at this stage.
+7. Fit the existing composition-based Random Forest model on the labelled JARVIS training data.
+8. Predict the band gap of the hypothetical compositions.
+9. Estimate a Random Forest tree-dispersion uncertainty proxy.
+10. Filter candidates by target-band-gap distance and uncertainty.
+11. Rank the remaining candidates and save them to:
+
+results/hypothetical_candidates.csv
+
+Example:
+
+python src/generate_hypothetical_candidates.py --target 1.5 --top-k 200
+
+This extension changes the research question from only screening known materials to exploring a larger composition space for hypothetical candidates. However, a generated formula is not automatically a new material in the experimental or literature sense.
+
+The generated candidates are hypotheses only. The current model does not establish:
+
+- crystal structure
+- thermodynamic stability
+- dynamical stability
+- synthesizability
+- formation energy
+- complete chemical novelty in the literature
+- experimental realization
+
+The next research stage should therefore be structure generation, DFT relaxation/formation-energy validation, stability checks, and electronic-property validation before describing a candidate as a realistic material-discovery result.
+
+New-materials workflow
+
+Known JARVIS materials
+        ↓
+Train validated ML model
+        ↓
+Generate hypothetical compositions
+        ↓
+Remove known JARVIS compositions
+        ↓
+Calculate descriptors
+        ↓
+Predict band gap
+        ↓
+Uncertainty / applicability-domain filtering
+        ↓
+Rank candidates
+        ↓
+Generate plausible crystal structures
+        ↓
+DFT relaxation and stability validation
+        ↓
+Band-gap validation
+        ↓
+Candidates for further experimental consideration
+
+This is deliberately framed as ML-assisted candidate generation and prioritization rather than automatic discovery.
+
+Updated project structure
+
+Quantum-materials/
+│
+├── notebooks/
+│   ├── 01_ml_quantum_materials.ipynb
+│   ├── 02_materials_aware_validation.ipynb
+│   ├── 03_hyperparameter_tuning.ipynb
+│   ├── 04_candidate_screening.ipynb
+│   ├── 05_Interpretation.ipynb
+│   ├── 06_Trustworthy_ML.ipynb
+│   ├── 07_Error_Analysis.ipynb
+│   ├── 08_Structural_Descriptors.ipynb
+│   ├── 09_Final_Research_Results.ipynb
+│   └── 10_Advanced_Model_Optimization.ipynb
+│
+├── src/
+│   ├── descriptors.py
+│   ├── preprocessing.py
+│   ├── models.py
+│   ├── evaluation.py
+│   └── generate_hypothetical_candidates.py
+│
+├── data/
+├── results/
+│   └── hypothetical_candidates.csv
+├── figures/
+├── app.py
+├── requirements.txt
+└── README.md
+
 Author
 
 Ayush Kumar Prajapati

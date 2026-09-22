@@ -312,6 +312,78 @@ def generate_quaternary_candidates() -> list[str]:
     return sorted(candidates)
 
 
+
+def chemistry_plausibility(formula: str) -> tuple[bool, float, str]:
+    """Apply transparent composition-level plausibility checks.
+
+    This is intentionally conservative and does not claim structural or
+    thermodynamic stability. It checks charge balance, bounded stoichiometry,
+    and whether the mean electronegativity of the anion set exceeds that of
+    the cation set, which is a simple ionic-character sanity check.
+    """
+    composition = parse_formula(formula)
+    if not composition:
+        return False, 0.0, "invalid_formula"
+
+    if not 2 <= len(composition) <= 4:
+        return False, 0.0, "element_count"
+
+    total_atoms = sum(composition.values())
+    if total_atoms > 12:
+        return False, 0.0, "stoichiometry_too_large"
+
+    cations = []
+    anions = []
+    for element in composition:
+        positive = [z for z in OXIDATION_STATES.get(element, ()) if z > 0]
+        negative = [z for z in OXIDATION_STATES.get(element, ()) if z < 0]
+        if positive:
+            cations.append(element)
+        if negative:
+            anions.append(element)
+
+    if not cations or not anions:
+        return False, 0.0, "missing_cation_or_anion"
+
+    # Require at least one charge-balanced oxidation-state assignment.
+    charge_balanced = False
+    state_lists = [OXIDATION_STATES[e] for e in composition]
+    elements = tuple(composition)
+    amounts = tuple(int(v) for v in composition.values())
+    for states in __import__("itertools").product(*state_lists):
+        if sum(a * z for a, z in zip(amounts, states)) == 0:
+            charge_balanced = True
+            break
+    if not charge_balanced:
+        return False, 0.0, "not_charge_balanced"
+
+    def mean_x(items):
+        vals = []
+        for element in items:
+            try:
+                value = float(Specie(element).X)
+                if np.isfinite(value):
+                    vals.append(value)
+            except Exception:
+                pass
+        return float(np.mean(vals)) if vals else np.nan
+
+    cation_x = mean_x(cations)
+    anion_x = mean_x(anions)
+
+    if not (np.isfinite(cation_x) and np.isfinite(anion_x)):
+        return False, 0.0, "missing_electronegativity"
+
+    electronegativity_gap = anion_x - cation_x
+    if electronegativity_gap < 0.10:
+        return False, 0.0, "weak_ionic_character"
+
+    # Soft score: larger electronegativity separation is treated only as a
+    # screening signal, never as evidence of stability.
+    score = min(electronegativity_gap / 2.0, 1.0)
+    return True, float(score), "charge_balanced"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--target", type=float, default=1.5)
@@ -373,6 +445,15 @@ def main() -> None:
 
     candidates = pd.DataFrame(records)
 
+    if not candidates.empty:
+        chemistry_results = candidates["formula"].map(chemistry_plausibility)
+        candidates["chemically_plausible"] = chemistry_results.map(lambda x: x[0])
+        candidates["chemistry_score"] = chemistry_results.map(lambda x: x[1])
+        candidates["chemistry_reason"] = chemistry_results.map(lambda x: x[2])
+        before_chemistry = len(candidates)
+        candidates = candidates[candidates["chemically_plausible"]].copy()
+        print(f"Composition-level chemistry filter removed: {before_chemistry - len(candidates):,}")
+
     print(f"Known composition candidates removed: {known_composition_count:,}")
     print(f"Descriptor generation failures: {descriptor_failure_count:,}")
     print(f"Novel composition candidates after filtering: {len(candidates):,}")
@@ -430,6 +511,20 @@ def main() -> None:
     X_candidates = candidates[FEATURE_COLUMNS].copy()
     predictions = model.predict(X_candidates)
 
+    # Transparent applicability-domain screen: require hypothetical numeric
+    # descriptors to remain inside the observed training-set ranges. This is a
+    # range-based screen, not a calibrated probability of validity.
+    domain_columns = [column for column in NUMERIC_FEATURES if column in candidates.columns]
+    out_of_domain = np.zeros(len(candidates), dtype=int)
+    for column in domain_columns:
+        train_values = pd.to_numeric(training[column], errors="coerce")
+        lo = float(train_values.min())
+        hi = float(train_values.max())
+        values = pd.to_numeric(candidates[column], errors="coerce")
+        out_of_domain += ((values < lo) | (values > hi) | ~np.isfinite(values)).astype(int).to_numpy()
+    candidates["out_of_domain_features"] = out_of_domain
+    candidates["in_domain_fraction"] = 1.0 - out_of_domain / max(len(domain_columns), 1)
+
     transformed = model.named_steps["preprocessor"].transform(X_candidates)
     forest = model.named_steps["model"]
 
@@ -448,11 +543,13 @@ def main() -> None:
     candidates["screening_score"] = (
         candidates["distance_from_target_eV"]
         + 0.25 * candidates["uncertainty_proxy_eV"]
+        + 0.10 * (1.0 - candidates["chemistry_score"])
     )
 
     candidates = candidates[
         (candidates["distance_from_target_eV"] <= args.max_distance)
         & (candidates["uncertainty_proxy_eV"] <= args.max_uncertainty)
+        & (candidates["out_of_domain_features"] == 0)
     ].sort_values(
         ["screening_score", "distance_from_target_eV", "uncertainty_proxy_eV"]
     )
@@ -466,6 +563,8 @@ def main() -> None:
         "uncertainty_proxy_eV",
         "distance_from_target_eV",
         "screening_score",
+        "chemistry_score",
+        "in_domain_fraction",
         "num_elements",
         "total_atoms",
     ]

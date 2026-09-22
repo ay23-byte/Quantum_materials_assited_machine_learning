@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 import sys
+
 from math import gcd
 from functools import reduce
 
@@ -83,6 +84,12 @@ def reduced_composition_signature(formula: str) -> str:
     return "".join(f"{element}{reduced[element]}" for element in sorted(reduced))
 
 
+def element_system_signature(formula: str) -> str:
+    """Ignore stoichiometric coefficients so A2BC and ABC2 share one system."""
+    composition = parse_formula(formula)
+    return "-".join(sorted(composition))
+
+
 def enrich(df: pd.DataFrame) -> pd.DataFrame:
     rows = []
     for formula in df["formula"].astype(str):
@@ -93,6 +100,7 @@ def enrich(df: pd.DataFrame) -> pd.DataFrame:
             "anion_family": anion_family,
             "chemistry_signature": f"{cation_family}|{anion_family}",
             "reduced_composition_signature": reduced_composition_signature(formula),
+            "element_system_signature": element_system_signature(formula),
         })
     return pd.concat([df.reset_index(drop=True), pd.DataFrame(rows)], axis=1)
 
@@ -101,11 +109,13 @@ def select_diverse(
     df: pd.DataFrame,
     shortlist_size: int,
     max_per_signature: int,
+    max_per_system: int,
     max_per_reduced_family: int,
     max_per_stoich: int,
 ) -> pd.DataFrame:
     selected = []
     signature_counts: dict[str, int] = {}
+    system_counts: dict[str, int] = {}
     reduced_counts: dict[str, int] = {}
     stoich_counts: dict[str, int] = {}
 
@@ -115,10 +125,13 @@ def select_diverse(
 
     for _, row in ordered.iterrows():
         signature = row["chemistry_signature"]
+        system = row["element_system_signature"]
         reduced_family = row["reduced_composition_signature"]
         stoich = row["stoichiometry_class"]
 
         if signature_counts.get(signature, 0) >= max_per_signature:
+            continue
+        if system_counts.get(system, 0) >= max_per_system:
             continue
         if reduced_counts.get(reduced_family, 0) >= max_per_reduced_family:
             continue
@@ -127,6 +140,7 @@ def select_diverse(
 
         selected.append(row)
         signature_counts[signature] = signature_counts.get(signature, 0) + 1
+        system_counts[system] = system_counts.get(system, 0) + 1
         reduced_counts[reduced_family] = reduced_counts.get(reduced_family, 0) + 1
         stoich_counts[stoich] = stoich_counts.get(stoich, 0) + 1
 
@@ -137,8 +151,8 @@ def select_diverse(
         raise RuntimeError(
             f"Strict diversity constraints produced only {len(selected)} candidates, "
             f"but {shortlist_size} were requested. Relax the constraints explicitly "
-            f"with --max-per-signature, --max-per-reduced-family, or --max-per-stoich "
-            f"instead of silently filling the shortlist with less-diverse candidates."
+            f"with --max-per-signature, --max-per-system, --max-per-reduced-family, "
+            f"or --max-per-stoich."
         )
 
     result = pd.DataFrame(selected).reset_index(drop=True)
@@ -160,8 +174,8 @@ def write_report(shortlist: pd.DataFrame, source_rows: int, output_path: Path) -
         f"- Source candidates read: **{source_rows:,}**",
         f"- Final shortlist: **{len(shortlist):,}**",
         "- Ranking inputs: predicted band gap, distance from target, Random Forest tree-dispersion uncertainty proxy, chemistry score, and applicability-domain filtering already performed by the generator.",
-        "- Diversity controls: chemistry-family signature, reduced composition family, and stoichiometry class.",
-        "- Duplicate formulas are not repeated in the final shortlist.",
+        "- Diversity controls: chemistry-family signature, exact element-system signature, reduced composition family, and stoichiometry class.",
+        "- No silent fallback is used to violate diversity constraints.",
         "",
         "## Scientific interpretation",
         "",
@@ -247,7 +261,8 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", type=Path, default=INPUT_FILE)
     parser.add_argument("--shortlist-size", type=int, default=15)
-    parser.add_argument("--max-per-signature", type=int, default=2)
+    parser.add_argument("--max-per-signature", type=int, default=3)
+    parser.add_argument("--max-per-system", type=int, default=1)
     parser.add_argument("--max-per-reduced-family", type=int, default=1)
     parser.add_argument("--max-per-stoich", type=int, default=8)
     args = parser.parse_args()
@@ -273,6 +288,7 @@ def main() -> None:
         df,
         args.shortlist_size,
         args.max_per_signature,
+        args.max_per_system,
         args.max_per_reduced_family,
         args.max_per_stoich,
     )
@@ -289,6 +305,7 @@ def main() -> None:
     print(f"Final shortlist: {len(shortlist):,}")
     print("Diversity constraints:")
     print(f"  max per chemistry signature: {args.max_per_signature}")
+    print(f"  max per element system: {args.max_per_system}")
     print(f"  max per reduced composition family: {args.max_per_reduced_family}")
     print(f"  max per stoichiometry class: {args.max_per_stoich}")
     print(f"Saved: {OUTPUT_FILE}")

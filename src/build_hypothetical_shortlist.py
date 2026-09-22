@@ -262,7 +262,7 @@ def main() -> None:
     parser.add_argument("--input", type=Path, default=INPUT_FILE)
     parser.add_argument("--shortlist-size", type=int, default=15)
     parser.add_argument("--max-per-signature", type=int, default=3)
-    parser.add_argument("--max-per-system", type=int, default=1)
+    parser.add_argument("--max-per-system", type=int, default=2)
     parser.add_argument("--max-per-reduced-family", type=int, default=1)
     parser.add_argument("--max-per-stoich", type=int, default=8)
     args = parser.parse_args()

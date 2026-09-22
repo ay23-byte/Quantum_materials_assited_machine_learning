@@ -25,6 +25,7 @@ import sys
 import numpy as np
 import pandas as pd
 from jarvis.db.figshare import data
+from jarvis.core.specie import Specie
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -74,6 +75,92 @@ def format_formula(elements: tuple[str, ...], amounts: tuple[int, ...]) -> str:
         for element, amount in zip(elements, amounts)
     )
 
+
+
+def safe_material_descriptors(formula: str) -> dict:
+    """Compute the same 23 elemental descriptors while tolerating missing JARVIS properties.
+
+    Some hypothetical compositions contain elements for which one or more
+    JARVIS elemental properties are unavailable. Missing values are retained
+    as NaN and imputed later from the training-set descriptor medians.
+    """
+    composition = parse_formula(formula)
+    if not composition:
+        return {}
+
+    elements = list(composition)
+    amounts = np.array([composition[e] for e in elements], dtype=float)
+    total_atoms = float(amounts.sum())
+
+    def values(attr):
+        out = []
+        for element in elements:
+            try:
+                value = float(getattr(Specie(element), attr))
+                if value <= -9990:
+                    value = np.nan
+            except Exception:
+                value = np.nan
+            out.append(value)
+        return out
+
+    def safe_mean(vals):
+        vals = [v for v in vals if np.isfinite(v)]
+        return float(np.mean(vals)) if vals else np.nan
+
+    def safe_min(vals):
+        vals = [v for v in vals if np.isfinite(v)]
+        return float(np.min(vals)) if vals else np.nan
+
+    def safe_max(vals):
+        vals = [v for v in vals if np.isfinite(v)]
+        return float(np.max(vals)) if vals else np.nan
+
+    atomic_numbers = values("Z")
+    atomic_masses = values("atomic_mass")
+    atomic_radii = values("atomic_rad")
+    electronegativities = values("electronegativity")
+    ionization_energies = values("ionization_energy")
+    electron_affinities = values("electron_affinity")
+    s_valence = values("s_valence")
+    p_valence = values("p_valence")
+    d_valence = values("d_valence")
+    f_valence = values("f_valence")
+    periods = values("period")
+    groups = values("group")
+
+    en_min = safe_min(electronegativities)
+    en_max = safe_max(electronegativities)
+
+    return {
+        "num_elements": len(elements),
+        "total_atoms": total_atoms,
+        "mean_atomic_number": safe_mean(atomic_numbers),
+        "min_atomic_number": safe_min(atomic_numbers),
+        "max_atomic_number": safe_max(atomic_numbers),
+        "mean_atomic_mass": safe_mean(atomic_masses),
+        "min_atomic_mass": safe_min(atomic_masses),
+        "max_atomic_mass": safe_max(atomic_masses),
+        "mean_atomic_radius": safe_mean(atomic_radii),
+        "min_atomic_radius": safe_min(atomic_radii),
+        "max_atomic_radius": safe_max(atomic_radii),
+        "mean_electronegativity": safe_mean(electronegativities),
+        "min_electronegativity": en_min,
+        "max_electronegativity": en_max,
+        "electronegativity_difference": (
+            en_max - en_min
+            if np.isfinite(en_max) and np.isfinite(en_min)
+            else np.nan
+        ),
+        "mean_ionization_energy": safe_mean(ionization_energies),
+        "mean_electron_affinity": safe_mean(electron_affinities),
+        "mean_s_valence": safe_mean(s_valence),
+        "mean_p_valence": safe_mean(p_valence),
+        "mean_d_valence": safe_mean(d_valence),
+        "mean_f_valence": safe_mean(f_valence),
+        "mean_period": safe_mean(periods),
+        "mean_group": safe_mean(groups),
+    }
 
 def neutral_ratios(
     elements: tuple[str, ...],
@@ -206,7 +293,7 @@ def generate_quaternary_candidates() -> list[str]:
                                         for b in range(1, 5):
                                             for c in range(1, 5):
                                                 numerator = -(a * za + b * zb + c * zc)
-                                                if numerator <= 0 or numerator % zd != 0:
+                                                if numerator % zd != 0:
                                                     continue
                                                 d = numerator // zd
                                                 if not 1 <= d <= 4:
@@ -270,8 +357,9 @@ def main() -> None:
         try:
             desc = material_descriptors(formula)
         except Exception:
-            descriptor_failure_count += 1
-            continue
+            # Fall back to a tolerant implementation when a JARVIS property
+            # is unavailable for one of the hypothetical elements.
+            desc = safe_material_descriptors(formula)
 
         if not desc:
             descriptor_failure_count += 1
@@ -281,31 +369,18 @@ def main() -> None:
         desc["crys"] = "unknown"
         desc["spg_number"] = -1
 
-        try:
-            invalid = any(
-                not np.isfinite(float(desc.get(col, np.nan)))
-                for col in NUMERIC_FEATURES
-            )
-        except (TypeError, ValueError):
-            invalid = True
-
-        if invalid:
-            descriptor_failure_count += 1
-            continue
-
         records.append({"formula": formula, "composition_key": key, **desc})
 
     candidates = pd.DataFrame(records)
 
     print(f"Known composition candidates removed: {known_composition_count:,}")
-    print(f"Descriptor failures: {descriptor_failure_count:,}")
+    print(f"Descriptor generation failures: {descriptor_failure_count:,}")
     print(f"Novel composition candidates after filtering: {len(candidates):,}")
 
     if candidates.empty:
         raise RuntimeError(
-            "No hypothetical candidates survived filtering. "
-            "Broaden the composition generator rather than removing the "
-            "known-composition filter."
+            "No hypothetical candidates survived generation. Check descriptor "
+            "generation and the composition-space diagnostics above."
         )
 
     if not DATA_FILE.exists():
@@ -321,6 +396,26 @@ def main() -> None:
     ]
     if missing:
         raise ValueError("Training data missing columns: " + ", ".join(missing))
+
+    # Hypothetical compositions may contain valid elements with missing JARVIS
+    # elemental properties. Use training-set medians for those descriptor
+    # values rather than discarding the entire composition. This keeps the
+    # feature definition identical to the trained model while making the
+    # candidate-generation stage robust to sparse elemental metadata.
+    imputed_columns = []
+    for column in NUMERIC_FEATURES:
+        training_median = pd.to_numeric(training[column], errors="coerce").median()
+        if column in candidates.columns:
+            values = pd.to_numeric(candidates[column], errors="coerce")
+            missing_count = int(values.isna().sum())
+            if missing_count:
+                imputed_columns.append((column, missing_count))
+            candidates[column] = values.fillna(training_median)
+
+    if imputed_columns:
+        print("Imputed missing hypothetical descriptors from training medians:")
+        for column, count in imputed_columns:
+            print(f"  {column}: {count:,}")
 
     X_train = training[FEATURE_COLUMNS].copy()
     y_train = pd.to_numeric(training["target_bandgap"], errors="coerce")

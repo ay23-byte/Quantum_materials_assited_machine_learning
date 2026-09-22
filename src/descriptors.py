@@ -93,20 +93,20 @@ def material_descriptors(formula: str) -> dict:
         atomic_masses.append(_valid_property(specie.atomic_mass))
         atomic_radii.append(_valid_property(specie.atomic_rad))
         electronegativities.append(
-            _valid_property(specie.electronegativity)
+            _valid_property(specie.X)
         )
         ionization_energies.append(
-            _valid_property(specie.ionization_energy)
+            _valid_property(specie.element_property("first_ion_en"))
         )
         electron_affinities.append(
-            _valid_property(specie.electron_affinity)
+            _valid_property(specie.element_property("elec_aff"))
         )
-        s_valence.append(_valid_property(specie.s_valence))
-        p_valence.append(_valid_property(specie.p_valence))
-        d_valence.append(_valid_property(specie.d_valence))
-        f_valence.append(_valid_property(specie.f_valence))
-        periods.append(_valid_property(specie.period))
-        groups.append(_valid_property(specie.group))
+        s_valence.append(_valid_property(specie.element_property("nsvalence")))
+        p_valence.append(_valid_property(specie.element_property("npvalence")))
+        d_valence.append(_valid_property(specie.element_property("ndvalence")))
+        f_valence.append(_valid_property(specie.element_property("nfvalence")))
+        periods.append(_valid_property(specie.element_property("row")))
+        groups.append(_valid_property(specie.element_property("coulmn")))
 
     return {
         "num_elements": len(elements),

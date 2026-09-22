@@ -34,7 +34,7 @@ from jarvis.core.specie import Specie
 from jarvis.db.figshare import data as jarvis_data
 from jarvis.io.vasp.inputs import Poscar
 
-from src.descriptors import parse_formula
+try:\n    from src.descriptors import parse_formula\nexcept ModuleNotFoundError:\n    # Allows direct execution with: python src\\generate_hypothetical_structures.py\n    from descriptors import parse_formula
 
 ROOT = Path(__file__).resolve().parents[1]
 SHORTLIST_FILE = ROOT / "results" / "hypothetical_shortlist.csv"

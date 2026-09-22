@@ -37,7 +37,8 @@ from jarvis.io.vasp.inputs import Poscar
 try:
     from src.descriptors import parse_formula
 except ModuleNotFoundError:
-    # Allows direct execution with: python src\\generate_hypothetical_structures.py\n    from descriptors import parse_formula
+    # Allows direct execution with: python src\\generate_hypothetical_structures.py
+    from descriptors import parse_formula
 
 ROOT = Path(__file__).resolve().parents[1]
 SHORTLIST_FILE = ROOT / "results" / "hypothetical_shortlist.csv"

@@ -40,8 +40,8 @@ ELEMENT_FAMILY = {
     "Al": "post_transition", "Ga": "post_transition", "In": "post_transition",
     "Si": "metalloid", "Ge": "metalloid", "Sn": "post_transition",
     "P": "pnictogen", "As": "pnictogen", "Sb": "pnictogen", "Bi": "pnictogen",
-    "B": "metalloid", "C": "nonmetal",
-    "N": "pnictogen", "O": "chalcogen", "S": "chalcogen", "Se": "chalcogen", "Te": "chalcogen",
+    "N": "pnictogen", "B": "metalloid", "C": "nonmetal",
+    "O": "chalcogen", "S": "chalcogen", "Se": "chalcogen", "Te": "chalcogen",
     "F": "halogen", "Cl": "halogen", "Br": "halogen", "I": "halogen",
 }
 
@@ -51,10 +51,12 @@ CATION_ELEMENTS = {
     "B", "C",
 }
 
+
 def stoichiometry_class(formula: str) -> str:
     composition = parse_formula(formula)
     n = len(composition)
     return {2: "binary", 3: "ternary", 4: "quaternary"}.get(n, f"{n}-element")
+
 
 def element_families(formula: str) -> tuple[str, str]:
     composition = parse_formula(formula)
@@ -70,6 +72,7 @@ def element_families(formula: str) -> tuple[str, str]:
     anion = "+".join(sorted(set(anion_families))) or "unknown"
     return cation, anion
 
+
 def enrich(df: pd.DataFrame) -> pd.DataFrame:
     rows = []
     for formula in df["formula"].astype(str):
@@ -82,24 +85,81 @@ def enrich(df: pd.DataFrame) -> pd.DataFrame:
         })
     return pd.concat([df.reset_index(drop=True), pd.DataFrame(rows)], axis=1)
 
-def select_diverse(df: pd.DataFrame, shortlist_size: int, max_per_signature: int) -> pd.DataFrame:
+
+def reduced_composition_signature(formula: str) -> str:
+    composition = parse_formula(formula)
+    values = [int(v) if float(v).is_integer() else float(v) for v in composition.values()]
+    from math import gcd
+    from functools import reduce
+    ints = [int(round(v)) for v in values]
+    divisor = reduce(gcd, ints) if ints else 1
+    reduced = {element: int(count // divisor) for element, count in composition.items()}
+    return "".join(f"{element}{reduced[element]}" for element in sorted(reduced))
+
+
+def select_diverse(
+    df: pd.DataFrame,
+    shortlist_size: int,
+    max_per_signature: int,
+    max_per_reduced_family: int,
+    max_per_stoich: int,
+) -> pd.DataFrame:
     selected = []
-    counts: dict[str, int] = {}
+    signature_counts: dict[str, int] = {}
+    reduced_counts: dict[str, int] = {}
     stoich_counts: dict[str, int] = {}
-    ordered = df.sort_values(["screening_score", "distance_from_target_eV", "uncertainty_proxy_eV"])
+
+    ordered = df.sort_values(
+        ["screening_score", "distance_from_target_eV", "uncertainty_proxy_eV"]
+    ).copy()
+    ordered["reduced_composition_signature"] = ordered["formula"].map(
+        reduced_composition_signature
+    )
+
+    # First pass: enforce all diversity controls.
     for _, row in ordered.iterrows():
         signature = row["chemistry_signature"]
+        reduced_family = row["reduced_composition_signature"]
         stoich = row["stoichiometry_class"]
-        if counts.get(signature, 0) >= max_per_signature:
+
+        if signature_counts.get(signature, 0) >= max_per_signature:
             continue
-        if stoich_counts.get(stoich, 0) >= max(4, shortlist_size // 2):
+        if reduced_counts.get(reduced_family, 0) >= max_per_reduced_family:
             continue
+        if stoich_counts.get(stoich, 0) >= max_per_stoich:
+            continue
+
         selected.append(row)
-        counts[signature] = counts.get(signature, 0) + 1
+        signature_counts[signature] = signature_counts.get(signature, 0) + 1
+        reduced_counts[reduced_family] = reduced_counts.get(reduced_family, 0) + 1
         stoich_counts[stoich] = stoich_counts.get(stoich, 0) + 1
+
         if len(selected) >= shortlist_size:
             break
 
+    # Second pass: relax only the reduced-composition constraint if necessary.
+    if len(selected) < shortlist_size:
+        selected_formulas = {row["formula"] for row in selected}
+        for _, row in ordered.iterrows():
+            if row["formula"] in selected_formulas:
+                continue
+
+            signature = row["chemistry_signature"]
+            stoich = row["stoichiometry_class"]
+            if signature_counts.get(signature, 0) >= max_per_signature:
+                continue
+            if stoich_counts.get(stoich, 0) >= max_per_stoich:
+                continue
+
+            selected.append(row)
+            selected_formulas.add(row["formula"])
+            signature_counts[signature] = signature_counts.get(signature, 0) + 1
+            stoich_counts[stoich] = stoich_counts.get(stoich, 0) + 1
+
+            if len(selected) >= shortlist_size:
+                break
+
+    # Final fallback: fill remaining slots without duplicating formulas.
     if len(selected) < shortlist_size:
         selected_formulas = {row["formula"] for row in selected}
         for _, row in ordered.iterrows():
@@ -113,6 +173,7 @@ def select_diverse(df: pd.DataFrame, shortlist_size: int, max_per_signature: int
     result = pd.DataFrame(selected).reset_index(drop=True)
     result["shortlist_rank"] = range(1, len(result) + 1)
     return result
+
 
 def write_report(shortlist: pd.DataFrame, source_rows: int, output_path: Path) -> None:
     lines = [
@@ -128,7 +189,7 @@ def write_report(shortlist: pd.DataFrame, source_rows: int, output_path: Path) -
         f"- Source candidates read: **{source_rows:,}**",
         f"- Final shortlist: **{len(shortlist):,}**",
         "- Ranking inputs: predicted band gap, distance from target, Random Forest tree-dispersion uncertainty proxy, chemistry score, and applicability-domain filtering already performed by the generator.",
-        "- Diversity controls: chemistry-family signature and stoichiometry class.",
+        "- Diversity controls: chemistry-family signature, reduced composition family, and stoichiometry class.",
         "- Duplicate formulas are not repeated in the final shortlist.",
         "",
         "## Scientific interpretation",
@@ -173,6 +234,7 @@ def write_report(shortlist: pd.DataFrame, source_rows: int, output_path: Path) -
     lines.append("Generated automatically by src/build_hypothetical_shortlist.py.")
     output_path.write_text("\n".join(lines), encoding="utf-8")
 
+
 def make_plots(shortlist: pd.DataFrame) -> None:
     FIGURE_DIR.mkdir(parents=True, exist_ok=True)
     rank = shortlist.sort_values("shortlist_rank")
@@ -209,11 +271,14 @@ def make_plots(shortlist: pd.DataFrame) -> None:
     plt.savefig(FIGURE_DIR / "hypothetical_shortlist_chemistry.png", dpi=200)
     plt.close()
 
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", type=Path, default=INPUT_FILE)
     parser.add_argument("--shortlist-size", type=int, default=30)
-    parser.add_argument("--max-per-signature", type=int, default=3)
+    parser.add_argument("--max-per-signature", type=int, default=2)
+    parser.add_argument("--max-per-reduced-family", type=int, default=1)
+    parser.add_argument("--max-per-stoich", type=int, default=15)
     args = parser.parse_args()
 
     if not args.input.exists():
@@ -233,7 +298,13 @@ def main() -> None:
     df = df[df["in_domain_fraction"] >= 1.0].copy()
     df = enrich(df)
 
-    shortlist = select_diverse(df, args.shortlist_size, args.max_per_signature)
+    shortlist = select_diverse(
+        df,
+        args.shortlist_size,
+        args.max_per_signature,
+        args.max_per_reduced_family,
+        args.max_per_stoich,
+    )
 
     OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
     shortlist.to_csv(OUTPUT_FILE, index=False)
@@ -257,6 +328,7 @@ def main() -> None:
          "uncertainty_proxy_eV", "chemistry_score",
          "stoichiometry_class", "chemistry_signature"]
     ].to_string(index=False))
+
 
 if __name__ == "__main__":
     main()

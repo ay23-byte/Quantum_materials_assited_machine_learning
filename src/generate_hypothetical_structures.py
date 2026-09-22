@@ -32,7 +32,6 @@ import pandas as pd
 from jarvis.core.atoms import Atoms
 from jarvis.core.specie import Specie
 from jarvis.db.figshare import data as jarvis_data
-from jarvis.io.vasp.inputs import Poscar
 
 try:\n    from src.descriptors import parse_formula\nexcept ModuleNotFoundError:\n    # Allows direct execution with: python src\\generate_hypothetical_structures.py\n    from descriptors import parse_formula
 
@@ -281,6 +280,69 @@ def transfer_structure(
     return new_atoms, metadata
 
 
+def write_poscar(path: Path, atoms: Atoms, comment: str) -> None:
+    """Write a minimal VASP POSCAR directly."""
+    elements = list(atoms.elements)
+    order = list(dict.fromkeys(elements))
+    counts = [elements.count(el) for el in order]
+    lattice = np.asarray(atoms.lattice_mat, dtype=float)
+    frac = np.asarray(atoms.frac_coords, dtype=float)
+    lines = [comment, "1.0"]
+    lines.extend("  " + "  ".join(f"{x:.12f}" for x in row) for row in lattice)
+    lines.append("  " + "  ".join(order))
+    lines.append("  " + "  ".join(str(n) for n in counts))
+    lines.append("Direct")
+    for el in order:
+        for i, site_el in enumerate(elements):
+            if site_el == el:
+                xyz = frac[i] % 1.0
+                lines.append("  " + "  ".join(f"{x:.12f}" for x in xyz))
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def write_cif(path: Path, atoms: Atoms, formula: str) -> None:
+    """Write a simple P1 CIF directly."""
+    lattice = np.asarray(atoms.lattice_mat, dtype=float)
+    a_vec, b_vec, c_vec = lattice
+    a = float(np.linalg.norm(a_vec))
+    b = float(np.linalg.norm(b_vec))
+    c = float(np.linalg.norm(c_vec))
+
+    def angle(v1: np.ndarray, v2: np.ndarray) -> float:
+        denom = np.linalg.norm(v1) * np.linalg.norm(v2)
+        cosang = np.clip(float(np.dot(v1, v2) / denom), -1.0, 1.0)
+        return math.degrees(math.acos(cosang))
+
+    alpha = angle(b_vec, c_vec)
+    beta = angle(a_vec, c_vec)
+    gamma = angle(a_vec, b_vec)
+    frac = np.asarray(atoms.frac_coords, dtype=float)
+    lines = [
+        f"data_{formula}",
+        "_symmetry_space_group_name_H-M 'P 1'",
+        "_symmetry_Int_Tables_number 1",
+        f"_cell_length_a {a:.8f}",
+        f"_cell_length_b {b:.8f}",
+        f"_cell_length_c {c:.8f}",
+        f"_cell_angle_alpha {alpha:.8f}",
+        f"_cell_angle_beta {beta:.8f}",
+        f"_cell_angle_gamma {gamma:.8f}",
+        "",
+        "loop_",
+        "_atom_site_label",
+        "_atom_site_type_symbol",
+        "_atom_site_fract_x",
+        "_atom_site_fract_y",
+        "_atom_site_fract_z",
+    ]
+    counters = Counter()
+    for el, xyz in zip(atoms.elements, frac):
+        counters[el] += 1
+        x, y, z = xyz % 1.0
+        lines.append(f"{el}{counters[el]} {el} {x:.8f} {y:.8f} {z:.8f}")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def write_candidate_structures(
     candidate_formula: str,
     candidate_row: pd.Series,
@@ -305,8 +367,8 @@ def write_candidate_structures(
             poscar_path = prototype_dir / "POSCAR"
             cif_path = prototype_dir / "structure.cif"
 
-            Poscar(atoms).write_file(str(poscar_path))
-            atoms.write_cif(str(cif_path))
+            write_poscar(poscar_path, atoms, f"{candidate_formula} prototype transfer")
+            write_cif(cif_path, atoms, candidate_formula)
 
             readme = prototype_dir / "README.txt"
             readme.write_text(
@@ -360,6 +422,10 @@ Next step: relax this structure with DFT or a validated interatomic potential.
                 }
             )
         except Exception as exc:
+            print(
+                f"    [FAILED prototype {index}] {candidate_formula} <- "
+                f"{reference['jid']} ({reference['formula']}): {type(exc).__name__}: {exc}"
+            )
             rows.append(
                 {
                     "formula": candidate_formula,
@@ -374,7 +440,7 @@ Next step: relax this structure with DFT or a validated interatomic potential.
                     "lattice_scale": np.nan,
                     "poscar": "",
                     "cif": "",
-                    "status": f"failed: {exc}",
+                    "status": f"failed: {type(exc).__name__}: {exc}",
                 }
             )
 

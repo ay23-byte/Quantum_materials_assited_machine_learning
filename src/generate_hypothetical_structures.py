@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+from itertools import permutations
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -128,15 +129,70 @@ def family(element: str) -> str:
     return ELEMENT_FAMILY.get(element, "other")
 
 
-def family_overlap(candidate: str, reference: str) -> int:
-    return int(family(candidate) == family(reference))
+def chemical_role(element: str) -> str:
+    """Assign a coarse chemical role for structure-transfer matching.
+
+    This is a heuristic used only to avoid obviously incompatible species
+    substitutions. It is not an oxidation-state or bonding prediction.
+    """
+    fam = family(element)
+    if fam in {"alkali", "alkaline_earth", "post_transition", "transition"}:
+        return "cation"
+    if fam in {"halogen", "chalcogen", "pnictogen"}:
+        return "anion"
+    if fam in {"metalloid", "nonmetal"}:
+        return "ambiguous"
+    return "ambiguous"
+
+
+def role_compatibility(candidate: str, reference: str) -> float:
+    """Score compatibility between candidate and reference chemical roles."""
+    c_role = chemical_role(candidate)
+    r_role = chemical_role(reference)
+
+    if c_role == r_role:
+        return 3.0
+    if "ambiguous" in {c_role, r_role}:
+        return 1.0
+    return -4.0
+
+
+def species_pair_score(candidate: str, reference: str) -> float:
+    """Score a proposed species substitution.
+
+    Role compatibility dominates, followed by broad family similarity,
+    electronegativity similarity, and atomic-radius similarity.
+    """
+    score = role_compatibility(candidate, reference)
+
+    if family(candidate) == family(reference):
+        score += 2.0
+
+    try:
+        dx = abs(element_x(candidate) - element_x(reference))
+        score += max(0.0, 1.5 - dx)
+    except Exception:
+        pass
+
+    c_radius = element_radius(candidate)
+    r_radius = element_radius(reference)
+    if c_radius is not None and r_radius is not None and c_radius > 0 and r_radius > 0:
+        radius_ratio = max(c_radius, r_radius) / min(c_radius, r_radius)
+        score += max(0.0, 1.0 - abs(math.log(radius_ratio)))
+
+    return score
 
 
 def build_mapping(candidate_formula: str, reference_atoms: Atoms) -> dict[str, str]:
-    """Map reference species to candidate species using reduced stoichiometry.
+    """Map reference species to candidate species using chemistry-aware matching.
 
-    For equal multiplicities, electronegativity and broad chemistry family are
-    used as deterministic tie-breakers. This is a prototype-transfer heuristic.
+    Stoichiometric multiplicity is enforced exactly. Among species with equal
+    multiplicity, all possible one-to-one assignments are evaluated using a
+    coarse chemical-role/family/electronegativity/radius score. The best
+    assignment is selected deterministically.
+
+    This remains a prototype-transfer heuristic; it does not determine
+    oxidation states, bonding, or the true crystal structure.
     """
     candidate_counts = reduced_counts(candidate_formula)
     reference_counts = structure_reduced_counts(reference_atoms)
@@ -154,22 +210,49 @@ def build_mapping(candidate_formula: str, reference_atoms: Atoms) -> dict[str, s
         grouped_cand[count].append(element)
 
     for count in sorted(grouped_ref):
-        ref_group = sorted(grouped_ref[count], key=lambda e: (element_x(e), e))
-        cand_group = sorted(grouped_cand[count], key=lambda e: (element_x(e), e))
+        ref_group = sorted(grouped_ref[count])
+        cand_group = sorted(grouped_cand[count])
 
         if len(ref_group) != len(cand_group):
             raise ValueError("Could not match equal-count species groups.")
 
-        # First use electronegativity ordering. If two species share similar
-        # X values, alphabetical ordering keeps the result reproducible.
-        for ref_el, cand_el in zip(ref_group, cand_group):
-            mapping[ref_el] = cand_el
+        best_assignment = None
+        best_score = -float("inf")
+
+        for perm in permutations(cand_group):
+            score = sum(
+                species_pair_score(candidate, reference)
+                for reference, candidate in zip(ref_group, perm)
+            )
+            tie_key = tuple(perm)
+            if score > best_score or (
+                math.isclose(score, best_score)
+                and (best_assignment is None or tie_key < tuple(best_assignment))
+            ):
+                best_score = score
+                best_assignment = perm
+
+        if best_assignment is None:
+            raise ValueError("Could not determine a chemistry-aware species mapping.")
+
+        for reference, candidate in zip(ref_group, best_assignment):
+            mapping[reference] = candidate
 
     if set(mapping) != set(reference_counts):
         raise ValueError("Incomplete species mapping.")
 
-    return mapping
+    pair_scores = [
+        species_pair_score(candidate, reference)
+        for reference, candidate in mapping.items()
+    ]
+    incompatible_pairs = sum(score < 0.0 for score in pair_scores)
+    if incompatible_pairs > 1:
+        raise ValueError(
+            "Chemistry-aware mapping rejected: too many chemically incompatible "
+            f"species substitutions ({incompatible_pairs})."
+        )
 
+    return mapping
 
 def prototype_score(candidate_formula: str, reference_atoms: Atoms) -> tuple[int, float]:
     """Score a reference structure for a candidate.
@@ -418,66 +501,3 @@ def main() -> None:
         shortlist = shortlist.head(args.limit).copy()
 
     OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
-
-    references = collect_reference_structures()
-    all_rows = []
-    no_match = []
-
-    print("=" * 72)
-    print("Prototype-transferred hypothetical structure generation")
-    print("=" * 72)
-
-    for _, row in shortlist.iterrows():
-        formula = str(row["formula"])
-        try:
-            chosen = choose_references(formula, references, args.max_prototypes)
-            if not chosen:
-                no_match.append(formula)
-                print(f"[NO PROTOTYPE MATCH] {formula}")
-                continue
-
-            rows = write_candidate_structures(
-                formula, row, references, args.max_prototypes
-            )
-            all_rows.extend(rows)
-            successful = sum(r["status"].startswith("prototype_transferred") for r in rows)
-            print(
-                f"[OK] {formula}: {successful}/{len(chosen)} structures "
-                f"(prototype={chosen[0]['prototype']})"
-            )
-        except Exception as exc:
-            no_match.append(formula)
-            print(f"[FAILED] {formula}: {exc}")
-
-    manifest = pd.DataFrame(all_rows)
-    manifest.to_csv(MANIFEST_FILE, index=False)
-
-    summary = {
-        "shortlist_candidates": int(len(shortlist)),
-        "candidate_structures_generated": int(
-            sum(str(s).startswith("prototype_transferred") for s in manifest.get("status", []))
-        ),
-        "candidates_without_prototype_match": no_match,
-        "method": "JARVIS prototype transfer with uniform radius-based lattice scaling",
-        "scientific_status": "initial geometries only; no relaxation or stability validation",
-    }
-    (OUTPUT_ROOT / "generation_summary.json").write_text(
-        json.dumps(summary, indent=2),
-        encoding="utf-8",
-    )
-
-    print()
-    print(f"Manifest: {MANIFEST_FILE}")
-    print(f"Structures root: {OUTPUT_ROOT}")
-    print(f"Candidates without prototype match: {len(no_match)}")
-    if no_match:
-        print("  " + ", ".join(no_match))
-    print()
-    print(
-        "IMPORTANT: generated structures are prototype-transferred initial "
-        "geometries, not validated ground-state structures."
-    )
-
-
-if __name__ == "__main__":
-    main()

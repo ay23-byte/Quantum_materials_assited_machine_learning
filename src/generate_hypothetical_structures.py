@@ -448,6 +448,10 @@ Next step: relax this structure with DFT or a validated interatomic potential.
                 }
             )
         except Exception as exc:
+            print(
+                f"[FAILED] {candidate_formula} prototype {index} "
+                f"({reference['jid']} / {reference['formula']}): {exc}"
+            )
             rows.append(
                 {
                     "formula": candidate_formula,

@@ -1,0 +1,2 @@
+CIF file written using JARVIS-Tools package.
+data_Sr4Ca2I3N3

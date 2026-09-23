@@ -1,0 +1,39 @@
+CIF file written using JARVIS-Tools package.
+data_CsK3Te2
+_symmetry_space_group_name_H-M  'Pmma'
+_cell_length_a       6.49482
+_cell_length_b       7.72177
+_cell_length_c       10.2765
+_cell_angle_alpha    90
+_cell_angle_beta     90
+_cell_angle_gamma    90
+
+_symmetry_Int_Tables_number  51
+_chemical_formula_structural  CsK3Te2
+_chemical_formula_sum  Te4Cs2K6
+_cell_volume  515.3808204397127
+_cell_formula_units_Z  2
+loop_
+  _symmetry_equiv_pos_site_id
+ _symmetry_equiv_pos_as_xyz
+ 1  'x, y, z'
+loop_
+ _atom_site_type_symbol
+ _atom_site_label
+ _atom_site_symmetry_multiplicity
+ _atom_site_fract_x
+ _atom_site_fract_y
+ _atom_site_fract_z
+ _atom_site_fract_occupancy
+ Cs  Cs1  1  0.75000  0.50000  0.43324  1
+ Cs  Cs2  1  0.25000  0.50000  0.56676  1
+ K  K1  1  0.00000  0.00000  0.00000  1
+ K  K2  1  0.50000  0.00000  0.00000  1
+ K  K3  1  0.75000  0.21125  0.21712  1
+ K  K4  1  0.75000  0.78875  0.21712  1
+ K  K5  1  0.25000  0.21125  0.78288  1
+ K  K6  1  0.25000  0.78875  0.78288  1
+ Te  Te1  1  0.25000  0.50000  0.12996  1
+ Te  Te2  1  0.25000  0.00000  0.36963  1
+ Te  Te3  1  0.75000  0.00000  0.63037  1
+ Te  Te4  1  0.75000  0.50000  0.87004  1

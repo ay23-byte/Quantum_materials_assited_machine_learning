@@ -1,0 +1,2 @@
+CIF file written using JARVIS-Tools package.
+data_Rb2AlI2N

@@ -29,6 +29,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import spglib
 from jarvis.core.atoms import Atoms
 from jarvis.core.specie import Specie
 from jarvis.db.figshare import data as jarvis_data

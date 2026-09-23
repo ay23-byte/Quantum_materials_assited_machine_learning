@@ -1,0 +1,2 @@
+CIF file written using JARVIS-Tools package.
+data_Cs3KTe2

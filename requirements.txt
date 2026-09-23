@@ -8,3 +8,5 @@ seaborn>=0.13
 scikit-learn>=1.4
 shap>=0.45
 jarvis-tools>=2024.4
+tabulate
+spglib

@@ -35,11 +35,20 @@ MIN_DISTANCE_WARN_ANGSTROM = 1.20
 MAX_LATTICE_SCALE_WARN = 1.25
 
 
+def reduce_counts(raw: dict[str, int]) -> dict[str, int]:
+    g = 0
+    for value in raw.values():
+        g = math.gcd(g, int(value))
+    if g <= 0:
+        raise ValueError("Could not reduce composition counts.")
+    return {element: int(value) // g for element, value in raw.items()}
+
+
 def expected_counts(formula: str) -> dict[str, int]:
     raw = {str(k): int(round(float(v))) for k, v in parse_formula(formula).items()}
     if not raw or any(v <= 0 for v in raw.values()):
         raise ValueError(f"Invalid composition: {formula}")
-    return raw
+    return reduce_counts(raw)
 
 
 def parse_poscar(path: Path) -> dict:
@@ -224,9 +233,13 @@ def validate_row(row: pd.Series) -> dict:
         actual = {}
         for element, count in zip(data["species"], data["counts"]):
             actual[element] = actual.get(element, 0) + count
+        actual_reduced = reduce_counts(actual)
 
-        if actual != expected:
-            issues.append(f"composition mismatch: POSCAR={actual}, expected={expected}")
+        if actual_reduced != expected:
+            issues.append(
+                f"composition mismatch: POSCAR reduced={actual_reduced}, "
+                f"expected reduced={expected}; raw POSCAR={actual}"
+            )
         else:
             result["composition_match"] = True
 

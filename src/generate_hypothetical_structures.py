@@ -246,10 +246,10 @@ def build_mapping(candidate_formula: str, reference_atoms: Atoms) -> dict[str, s
         for reference, candidate in mapping.items()
     ]
     incompatible_pairs = sum(score < 0.0 for score in pair_scores)
-    if incompatible_pairs > 1:
+    if incompatible_pairs > 0:
         raise ValueError(
-            "Chemistry-aware mapping rejected: too many chemically incompatible "
-            f"species substitutions ({incompatible_pairs})."
+            "Chemistry-aware mapping rejected: incompatible cation/anion "
+            f"substitution detected ({incompatible_pairs} pair(s))."
         )
 
     return mapping

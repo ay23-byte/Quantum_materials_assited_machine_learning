@@ -509,3 +509,90 @@ def main() -> None:
         shortlist = shortlist.iloc[:int(args.limit)].copy()
 
     OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
+
+    print(f"Processing {len(shortlist)} hypothetical candidate(s)...")
+    references = collect_reference_structures()
+
+    all_rows = []
+    successful_candidates = 0
+    failed_candidates = 0
+
+    for _, candidate_row in shortlist.iterrows():
+        formula = str(candidate_row["formula"])
+        print(f"\nProcessing {formula}...")
+        rows = write_candidate_structures(
+            candidate_formula=formula,
+            candidate_row=candidate_row,
+            references=references,
+            max_prototypes=args.max_prototypes,
+        )
+
+        if not rows:
+            failed_candidates += 1
+            print(f"[FAILED] {formula}: no compatible prototype structures found")
+            continue
+
+        all_rows.extend(rows)
+        successful = sum(
+            row["status"] == "prototype_transferred_initial_structure"
+            for row in rows
+        )
+        failed = len(rows) - successful
+
+        if successful > 0:
+            successful_candidates += 1
+            print(
+                f"[OK] {formula}: {successful}/{len(rows)} structures generated"
+            )
+        else:
+            failed_candidates += 1
+            print(f"[FAILED] {formula}: all prototype transfers failed")
+
+    manifest = pd.DataFrame(all_rows)
+    if manifest.empty:
+        manifest = pd.DataFrame(
+            columns=[
+                "formula", "shortlist_rank", "predicted_bandgap_eV",
+                "uncertainty_proxy_eV", "chemistry_score", "prototype_index",
+                "prototype_source_jid", "prototype_source_formula", "prototype",
+                "lattice_scale", "poscar", "cif", "status",
+            ]
+        )
+
+    manifest.to_csv(MANIFEST_FILE, index=False)
+
+    summary = {
+        "input_file": str(args.input.relative_to(ROOT)),
+        "requested_limit": args.limit,
+        "processed_candidates": int(len(shortlist)),
+        "max_prototypes": int(args.max_prototypes),
+        "reference_structures": int(len(references)),
+        "successful_candidates": int(successful_candidates),
+        "failed_candidates": int(failed_candidates),
+        "successful_structures": int(
+            (manifest["status"] == "prototype_transferred_initial_structure").sum()
+        ),
+        "failed_structures": int(
+            manifest["status"].astype(str).str.startswith("failed:").sum()
+        ),
+        "manifest": str(MANIFEST_FILE.relative_to(ROOT)),
+        "interpretation": (
+            "Prototype-transferred initial structures only; not evidence of "
+            "ground-state stability or synthesizability."
+        ),
+    }
+
+    summary_file = OUTPUT_ROOT / "generation_summary.json"
+    summary_file.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+
+    print("\nStructure generation complete.")
+    print(f"Successful candidates: {successful_candidates}")
+    print(f"Failed candidates: {failed_candidates}")
+    print(f"Generated structures: {summary['successful_structures']}")
+    print(f"Failed structures: {summary['failed_structures']}")
+    print(f"Manifest: {MANIFEST_FILE}")
+    print(f"Summary: {summary_file}")
+
+
+if __name__ == "__main__":
+    main()

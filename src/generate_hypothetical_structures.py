@@ -478,6 +478,8 @@ def main() -> None:
     parser.add_argument("--limit", type=int, default=None)
     args = parser.parse_args()
 
+    print(f"Command-line limit: {args.limit}")
+
     if not args.input.exists():
         raise FileNotFoundError(
             f"Missing {args.input}. Run build_hypothetical_shortlist.py first."
@@ -498,6 +500,12 @@ def main() -> None:
         raise ValueError("Shortlist is missing columns: " + ", ".join(missing))
 
     if args.limit is not None:
-        shortlist = shortlist.head(args.limit).copy()
+        limit = max(1, int(args.limit))
+        shortlist = shortlist.iloc[:limit].copy()
+        print(f"Applied shortlist limit: {limit}")
+
+    # Defensive check: never process more rows than requested.
+    if args.limit is not None and len(shortlist) > int(args.limit):
+        shortlist = shortlist.iloc[:int(args.limit)].copy()
 
     OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)

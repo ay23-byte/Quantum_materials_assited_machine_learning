@@ -1,0 +1,12 @@
+{
+  "source_validation_file": "results\\hypothetical_structures\\structure_validation.csv",
+  "output_root": "results\\qe_jobs",
+  "prepared_structures": 26,
+  "valid": 18,
+  "valid_with_warnings": 8,
+  "pseudopotentials_generated": false,
+  "interpretation": "Quantum ESPRESSO input preparation only; convergence and pseudopotential checks are required.",
+  "pseudopotential_root": "results\\qe_pseudopotentials",
+  "strict_pseudopotential_mode": true,
+  "manifest_file": "results\\qe_jobs\\qe_job_manifest.csv"
+}

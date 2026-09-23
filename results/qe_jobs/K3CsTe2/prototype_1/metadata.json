@@ -1,0 +1,25 @@
+{
+  "formula": "K3CsTe2",
+  "prototype_index": 1,
+  "prototype_source_jid": "JVASP-87920",
+  "prototype_source_formula": "K3InP2",
+  "prototype": "A3B2C",
+  "lattice_scale": 1.1822660098522169,
+  "validation_status": "valid",
+  "validation_warnings": "nan",
+  "kpoint_mesh": [
+    3,
+    3,
+    2
+  ],
+  "ecutwfc_Ry_start": 60,
+  "ecutrho_Ry_start": 480,
+  "pseudopotentials": {
+    "K": "K.pbe-spn-kjpaw_psl.1.0.0.UPF",
+    "Cs": "Cs_pbe_v1.uspp.F.UPF",
+    "Te": "Te_pbe_v1.uspp.F.UPF"
+  },
+  "pseudopotential_missing_elements": [],
+  "pseudopotential_ambiguous_elements": [],
+  "scientific_status": "prototype-transferred initial structure; not relaxed or stability-validated"
+}

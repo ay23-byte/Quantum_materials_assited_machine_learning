@@ -306,13 +306,33 @@ def collect_reference_structures() -> list[dict]:
     return references
 
 
+def role_signature(formula: str) -> tuple[tuple[int, str], ...]:
+    """Return a count/chemical-role signature for prototype compatibility.
+
+    The count-only prototype (e.g. A3B2C) is not sufficient for structure
+    transfer because it can pair a cation site with an anion species. This
+    signature is only a coarse chemistry filter; ambiguous elements remain
+    ambiguous.
+    """
+    counts = reduced_counts(formula)
+    return tuple(
+        sorted((int(count), chemical_role(element)) for element, count in counts.items())
+    )
+
+
 def choose_references(
     candidate_formula: str,
     references: list[dict],
     max_prototypes: int,
 ) -> list[dict]:
     candidate_proto = prototype_from_counts(reduced_counts(candidate_formula))
-    matches = [r for r in references if r["prototype"] == candidate_proto]
+    candidate_role_signature = role_signature(candidate_formula)
+    matches = [
+        r
+        for r in references
+        if r["prototype"] == candidate_proto
+        and role_signature(r["formula"]) == candidate_role_signature
+    ]
 
     if not matches:
         return []
@@ -321,6 +341,12 @@ def choose_references(
     for ref in matches:
         score, radius_delta = prototype_score(candidate_formula, ref["atoms"])
         if score < 0:
+            continue
+        # Final mapping validation prevents a chemically incompatible
+        # cation/anion assignment from reaching structure generation.
+        try:
+            build_mapping(candidate_formula, ref["atoms"])
+        except Exception:
             continue
         scored.append((radius_delta, ref["jid"], ref))
 

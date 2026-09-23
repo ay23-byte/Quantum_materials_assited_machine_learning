@@ -89,6 +89,9 @@ def args():
     p.add_argument("--validation-file", type=Path, default=VALIDATION_FILE)
     p.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT)
     p.add_argument("--status", choices=["all", "valid", "valid_with_warnings"], default="all")
+    p.add_argument("--pseudo-root", type=Path, default=ROOT / "results" / "qe_pseudopotentials")
+    p.add_argument("--strict-pseudo", action="store_true",
+                   help="Fail if a required element pseudopotential is not found.")
     return p.parse_args()
 
 def root(p):
@@ -131,7 +134,32 @@ def mesh(row):
         vals.append(max(1, min(8, round(25.0/v))))
     return tuple(vals)
 
-def make_input(row, out):
+def find_pseudopotentials(elements, pseudo_root):
+    """Find one UPF per element from a shared pseudopotential directory.
+
+    Files are matched by the element prefix (e.g. K*.UPF). If exactly one
+    candidate exists it is used. Zero candidates leave a placeholder filename;
+    multiple candidates require the user to disambiguate by placing only one
+    file for that element or using a future explicit mapping.
+    """
+    pseudo_root = root(pseudo_root)
+    result = {}
+    missing = []
+    ambiguous = []
+    if not pseudo_root.exists():
+        return {}, list(elements), []
+    files = list(pseudo_root.glob("*.UPF")) + list(pseudo_root.glob("*.upf"))
+    for element in elements:
+        matches = [p for p in files if p.name.lower().startswith(element.lower() + ".")]
+        if len(matches) == 1:
+            result[element] = matches[0]
+        elif len(matches) == 0:
+            missing.append(element)
+        else:
+            ambiguous.append(element)
+    return result, missing, ambiguous
+
+def make_input(row, out, pseudo_root, strict_pseudo):
     formula = str(row["formula"])
     idx = int(row["prototype_index"])
     source = root(Path(str(row["poscar"])))
@@ -142,7 +170,23 @@ def make_input(row, out):
     cif = source.with_name("structure.cif")
     if cif.exists(): shutil.copy2(cif, job / "structure.cif")
     ka, kb, kc = mesh(row)
-    species = "\n".join(f"{e} 1.0 {e}.UPF" for e in elements)
+    pseudo_map, missing_pseudo, ambiguous_pseudo = find_pseudopotentials(elements, pseudo_root)
+    if strict_pseudo and (missing_pseudo or ambiguous_pseudo):
+        raise RuntimeError(
+            f"{formula} prototype {idx}: pseudopotential issue; "
+            f"missing={missing_pseudo}, ambiguous={ambiguous_pseudo}"
+        )
+    job_pseudo = job / "pseudo"
+    job_pseudo.mkdir(exist_ok=True)
+    pseudo_names = {}
+    for e in elements:
+        if e in pseudo_map:
+            src = pseudo_map[e]
+            shutil.copy2(src, job_pseudo / src.name)
+            pseudo_names[e] = src.name
+        else:
+            pseudo_names[e] = f"{e}.UPF"
+    species = "\n".join(f"{e} 1.0 {pseudo_names[e]}" for e in elements)
     cell = "\n".join(" ".join(f"{x:.10f}" for x in v) for v in lattice)
     pos = "\n".join(f"{e} {p[0]:.10f} {p[1]:.10f} {p[2]:.10f}" for e,p in positions)
     data = dict(prefix=f"{formula}_p{idx}", nat=sum(counts), ntyp=len(elements),
@@ -150,7 +194,6 @@ def make_input(row, out):
                 kpoints=f"{ka} {kb} {kc} 0 0 0")
     (job/"pw_relax.in").write_text(RELAX.format(**data), encoding="utf-8")
     (job/"pw_scf.in").write_text(SCF.format(**data), encoding="utf-8")
-    (job/"pseudo").mkdir(exist_ok=True)
     warnings = str(row.get("warnings","")).strip() or "none"
     metadata = {
         "formula": formula, "prototype_index": idx,
@@ -162,7 +205,9 @@ def make_input(row, out):
         "validation_warnings": warnings,
         "kpoint_mesh": [ka,kb,kc],
         "ecutwfc_Ry_start": 60, "ecutrho_Ry_start": 480,
-        "pseudopotentials": [f"{e}.UPF" for e in elements],
+        "pseudopotentials": pseudo_names,
+        "pseudopotential_missing_elements": missing_pseudo,
+        "pseudopotential_ambiguous_elements": ambiguous_pseudo,
         "scientific_status": "prototype-transferred initial structure; not relaxed or stability-validated"
     }
     (job/"metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
@@ -179,12 +224,17 @@ Files:
 - pw_scf.in: SCF starting input
 - POSCAR: source structure
 - structure.cif: source CIF when available
-- pseudo/: place the chosen .UPF files here
+- pseudo/: selected .UPF files (copied from the shared pseudopotential directory when available)
 - metadata.json: provenance
 
 IMPORTANT:
-Pseudopotentials are not included. Choose one consistent pseudopotential
-family and verify the exchange-correlation functional.
+Pseudopotentials are selected from results/qe_pseudopotentials when exactly one
+matching .UPF file exists per element. Otherwise the input contains a
+placeholder filename and must not be run until the required .UPF is supplied.
+
+Use one internally consistent pseudopotential family and exchange-correlation
+functional. Quantum ESPRESSO recommends testing pseudopotentials on simple
+systems before serious calculations.
 
 The cutoff (60/480 Ry), k-point mesh, smearing and other settings are
 starting values only. Perform convergence tests before production DFT.
@@ -216,7 +266,7 @@ def main():
     rows=[]
     for _, row in df.iterrows():
         print(f"Preparing {row['formula']} / prototype {int(row['prototype_index'])}...")
-        rows.append(make_input(row,out))
+        rows.append(make_input(row, out, a.pseudo_root, a.strict_pseudo))
         print("  [OK] Quantum ESPRESSO starting package prepared")
     manifest=pd.DataFrame(rows)
     mf=out/"qe_job_manifest.csv"; sf=out/"qe_job_summary.json"
@@ -228,6 +278,8 @@ def main():
              "valid_with_warnings":int((manifest["validation_status"]=="valid_with_warnings").sum()),
              "pseudopotentials_generated":False,
              "interpretation":"Quantum ESPRESSO input preparation only; convergence and pseudopotential checks are required.",
+              "pseudopotential_root":str(root(a.pseudo_root).relative_to(ROOT)),
+             "strict_pseudopotential_mode":bool(a.strict_pseudo),
              "manifest_file":str(mf.relative_to(ROOT))}
     sf.write_text(json.dumps(summary,indent=2),encoding="utf-8")
     print("\nQuantum ESPRESSO job preparation complete.")

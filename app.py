@@ -299,7 +299,7 @@ st.title(
 
 st.caption(
     "JARVIS-DFT 3D • OptB88vdW band-gap prediction • "
-    "Random Forest • Composition + Structure-aware ML"
+    "Random Forest • Structure-aware ML • Quantum ESPRESSO DFT validation"
 )
 
 
@@ -2030,6 +2030,10 @@ st.sidebar.write(
 
 st.sidebar.write(
     "Target: OptB88vdW band gap"
+)
+
+st.sidebar.write(
+    "DFT validation: Quantum ESPRESSO"
 )
 
 st.sidebar.markdown(

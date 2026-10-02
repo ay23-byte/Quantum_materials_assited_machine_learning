@@ -637,3 +637,64 @@ Condensed Matter Physics
 Computational Physics
 Quantum Many-Body Systems
 Machine Learning for Materials Science
+
+
+Final DFT Validation: K3CsTe2
+
+A shortlisted hypothetical composition, K3CsTe2, was taken through a prototype-transfer structure-generation and non-SOC DFT validation stage.
+
+Prototype source:
+- JARVIS prototype: JVASP-87920
+- Source prototype composition: K3InP2
+- Transferred target: K3CsTe2
+
+The prototype-transferred structure was relaxed with Quantum ESPRESSO using a non-SOC PBE calculation. The final relaxed structure is stored at:
+
+results/qe_jobs/K3CsTe2/prototype_1/relaxed_structure.in
+
+Final relaxation quantities:
+
+- Total energy: -911.04528610 Ry
+- Final force reported: 0.002107 Ry/Bohr
+- Cell gradient: 0.15 kbar
+- Residual stress: below 0.2 kbar
+
+Fixed-geometry non-SOC electronic validation gives:
+
+- VBM: 2.293961 eV (band 48)
+- CBM: 4.052416 eV (band 49, Gamma)
+- Indirect PBE band gap: 1.758455 eV
+
+The machine-readable result is available at:
+
+results/qe_jobs/K3CsTe2/prototype_1/non_soc_results.json
+
+and the detailed result summary is available at:
+
+results/qe_jobs/K3CsTe2/prototype_1/non_soc_results.md
+
+Scientific interpretation
+
+The K3CsTe2 result is a computational validation of a prototype-transferred hypothetical structure. The 1.758455 eV value is a non-SOC PBE band gap and should not be interpreted as an experimentally established band gap.
+
+The calculation does not by itself establish thermodynamic stability, dynamical stability, synthesizability, experimental realization, or complete literature novelty.
+
+Spin-orbit coupling (SOC) validation is a separate calculation and is not included in the reported 1.758455 eV result. The SOC calculation is being treated separately because K and especially Te require fully relativistic pseudopotentials and the available CPU environment has limited memory for the noncollinear calculation.
+
+Final workflow
+
+ML band-gap prediction
+        ↓
+Hypothetical composition generation
+        ↓
+Chemical plausibility filtering
+        ↓
+Candidate ranking with uncertainty
+        ↓
+Prototype-transfer structure generation
+        ↓
+K3CsTe2 structure relaxation
+        ↓
+Non-SOC electronic validation
+        ↓
+SOC validation / further DFT checks

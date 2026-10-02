@@ -1,0 +1,21 @@
+{
+  "formula": "K3CsTe2",
+  "method": "PBE non-SOC",
+  "relaxation": {
+    "calculation": "vc-relax",
+    "final_total_energy_Ry": -911.04528610,
+    "final_force_Ry_per_Bohr": 0.002107,
+    "cell_gradient_kbar": 0.15,
+    "residual_stress_kbar_upper_bound": 0.2
+  },
+  "electronic_structure": {
+    "vbm_eV": 2.293961,
+    "vbm_band": 48,
+    "cbm_eV": 4.052416,
+    "cbm_band": 49,
+    "cbm_kpoint": "Gamma",
+    "indirect_band_gap_eV": 1.758455
+  },
+  "structure_status": "relaxed prototype-transferred structure",
+  "soc_status": "not included in these results; SOC validation ongoing"
+}
